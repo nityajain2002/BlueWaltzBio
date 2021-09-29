@@ -17,6 +17,7 @@ library(shinyalert) # popup library
 #library(shinybusy)
 
 shinyUI(fluidPage(
+  tags$head(includeHTML(("google-analytics.html"))),
   
   navbarPage("Coverage",
 
