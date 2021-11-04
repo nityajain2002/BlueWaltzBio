@@ -771,7 +771,6 @@ shinyServer(function(input, output, session) {
             }
             # Add the tail to the replacement string
             replacement <- paste(replacement, ") OR (", sep="")
-            print(replacement)
             # Now we finally set searchTerm by replacing the ;s.
             searchTerm <- gsub(";", replacement, code)
             # But the last synonym won't have a ; after it! Sub in one last time:
@@ -887,10 +886,13 @@ shinyServer(function(input, output, session) {
         paste("NCBI_Fasta_File", ".zip", sep = "")
       },
       content = function(file) {
-        promise_all(uids = uidsGet(), matrix = matrixGetSearchTerms()) %...>% with({
+        promise_all(uids = uidsGet(), matrix = matrixGet()) %...>% with({
           progLength <- length(uids)
           progress <- AsyncProgress$new(session, min=0, max=progLength, message="Downloading", value=0)
           #make files with names of each of the the barcodes.fasta
+          #go to a temp dir to avoid permission issues
+          owd <- setwd(tempdir())
+          on.exit(setwd(owd))
           fs <- c()
           for (code in barcodeList()) {
             #put them in a list in order
@@ -900,12 +902,13 @@ shinyServer(function(input, output, session) {
           future_promise({  
           #for row in matrixGetSearchTerms
           for(i in 1:nrow(matrix)) {
-            row <- dataFrame[i,]
+            row <- matrix[i,]
             # do stuff with row
             
             #for each row in the column
             for(j in 1:ncol(matrix)) {
               #get the number of uids belonging to this cell
+              print(row)
               col <- row[j]
               #go through each index in uids list
               Vector_Fasta <- c()
@@ -924,17 +927,22 @@ shinyServer(function(input, output, session) {
                 }
                 Vector_Fasta <- c(Vector_Fasta, content_fasta) # Append the fasta file to a vector
                 progress$inc(amount=1)
+                print("uid downloaded")
               }
               #put sequence content in relevant fasta file (column index)
               write(Vector_Fasta, fs[j], append = TRUE) # Writes the vector containing all the fasta file information into one fasta file
+              print("bottom of column")
             }
+            print("bottom of row")
           }
           #zip it all together
           zip(zipfile=fname, files=fs, flags="-j")
           progress$set(value=progLength)
           progress$close()
           })
+          print("exited promise")
         })
+        print("exited promise handler")
       },
       contentType = "application/zip"
     )
