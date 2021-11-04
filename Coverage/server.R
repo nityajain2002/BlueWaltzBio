@@ -881,38 +881,62 @@ shinyServer(function(input, output, session) {
 
 # * NCBIDownloadFASTA -------------------------------------------------------
   
-    # Download Fasta Files
+    # Download Fasta Files as Zip
     output$fileDownloadF <- downloadHandler(
-        filename = function() { # Create the file and set its name
-          paste("NCBI_Fasta_File", ".fasta", sep = "")
-        },
-        content = function(file) {
-          uidsGet() %...>% {
-            progLength <- length(.)
-            progress <- AsyncProgress$new(session, min=0, max=progLength, message="Downloading", value=0)
-            future_promise({
-                  Vector_Fasta <- c()
-                  for (uid in .) {
-                      err <- 1
-                      while(err == 1){
-                        File <- tryCatch({ # Try catch for determining if homonyms exist, if they do fill up the errorPopupList and activate the errorHomonym Flag
-                          Sys.sleep(0.34) #sleeping for 1/3 of a second each time gives us 3 queries a second. If each user queries at this rate, we can service 4-8 at the same time.
-                          File_fasta <- entrez_fetch(db = "nucleotide", id = uid, rettype = "fasta") # Get the fasta file with that uid
-                          err <- 0
-                        }, error = function(err) {
-                          err <<- 1
-                        })
-                      }
-                      Vector_Fasta <- c(Vector_Fasta, File_fasta) # Append the fasta file to a vector
-                      progress$inc(amount=1)
-                  }
-                  write(Vector_Fasta, file) # Writes the vector containing all the fasta file information into one fasta file
-                  progress$set(value=progLength)
-                  progress$close()
-              #})
-            })
+      filename = function() { # Create the file and set its name
+        paste("NCBI_Fasta_File", ".zip", sep = "")
+      },
+      content = function(file) {
+        promise_all(uids = uidsGet(), matrix = matrixGetSearchTerms()) %...>% with({
+          progLength <- length(uids)
+          progress <- AsyncProgress$new(session, min=0, max=progLength, message="Downloading", value=0)
+          #make files with names of each of the the barcodes.fasta
+          fs <- c()
+          for (code in barcodeList()) {
+            #put them in a list in order
+            path <- paste0(code, "_sequences.fasta")
+            fs <- c(fs, path)
           }
-        }
+          future_promise({  
+          #for row in matrixGetSearchTerms
+          for(i in 1:nrow(matrix)) {
+            row <- dataFrame[i,]
+            # do stuff with row
+            
+            #for each row in the column
+            for(j in 1:ncol(matrix)) {
+              #get the number of uids belonging to this cell
+              col <- row[j]
+              #go through each index in uids list
+              Vector_Fasta <- c()
+              for(k in 1:col){
+                #download sequences for each UID
+                err <- 1
+                content_fasta <- ""
+                while(err == 1){
+                  File <- tryCatch({ # Try catch for determining if homonyms exist, if they do fill up the errorPopupList and activate the errorHomonym Flag
+                    Sys.sleep(0.34) #sleeping for 1/3 of a second each time gives us 3 queries a second. If each user queries at this rate, we can service 4-8 at the same time.
+                    content_fasta <- entrez_fetch(db = "nucleotide", id = uids[k], rettype = "fasta") # Get the fasta content with that uid
+                    err <- 0
+                  }, error = function(err) {
+                    err <<- 1
+                  })
+                }
+                Vector_Fasta <- c(Vector_Fasta, content_fasta) # Append the fasta file to a vector
+                progress$inc(amount=1)
+              }
+              #put sequence content in relevant fasta file (column index)
+              write(Vector_Fasta, fs[j], append = TRUE) # Writes the vector containing all the fasta file information into one fasta file
+            }
+          }
+          #zip it all together
+          zip(zipfile=fname, files=fs, flags="-j")
+          progress$set(value=progLength)
+          progress$close()
+          })
+        })
+      },
+      contentType = "application/zip"
     )
     
 
